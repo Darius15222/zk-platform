@@ -5,6 +5,12 @@ locals {
     "zk-platform"   = "Terraform for the zk-secops lab platform"
     "zk-detections" = "Logstash pipelines and Sigma rules with tests"
   }
+
+  # CI job names each repo must pass before merging; a repo joins once its CI exists on main
+  required_checks = {
+    "zk-auth" = ["test", "scan", "image"]
+  }
+  github_actions_app_id = 15368 # only GitHub Actions may report these checks
 }
 
 resource "github_repository" "this" {
@@ -66,7 +72,20 @@ resource "github_repository_ruleset" "main" {
       dismiss_stale_reviews_on_push     = true
       required_review_thread_resolution = true
     }
-    # required_status_checks are added per repo once its CI exists (stage 3)
+
+    dynamic "required_status_checks" {
+      for_each = contains(keys(local.required_checks), each.key) ? [1] : []
+      content {
+        strict_required_status_checks_policy = true
+        dynamic "required_check" {
+          for_each = local.required_checks[each.key]
+          content {
+            context        = required_check.value
+            integration_id = local.github_actions_app_id
+          }
+        }
+      }
+    }
   }
 }
 
