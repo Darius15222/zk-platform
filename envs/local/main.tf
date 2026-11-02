@@ -2,8 +2,28 @@
 
 locals {
   # images pinned by digest (harness/pinning.md)
-  es_image     = "docker.elastic.co/elasticsearch/elasticsearch:9.5.0@sha256:8818ab9af72d7482e38a9d6f0454d5ee667564a25bbdc42360c0f9b8f8f72fc5"
-  kibana_image = "docker.elastic.co/kibana/kibana:9.5.0@sha256:4d1ddf41d5488bc2d627cb43b3a5e2fc5fd05e41d34a3ae2527c902ea58993d3"
+  es_image       = "docker.elastic.co/elasticsearch/elasticsearch:9.5.0@sha256:8818ab9af72d7482e38a9d6f0454d5ee667564a25bbdc42360c0f9b8f8f72fc5"
+  kibana_image   = "docker.elastic.co/kibana/kibana:9.5.0@sha256:4d1ddf41d5488bc2d627cb43b3a5e2fc5fd05e41d34a3ae2527c902ea58993d3"
+  agent_image    = "docker.elastic.co/elastic-agent/elastic-agent:9.5.0@sha256:b623e37ffbb75ca5c16c46a8e6ccdc68c8a48adb20ab30f2c7d48d3ffda1d084"
+  logstash_image = "docker.elastic.co/logstash/logstash:9.5.0@sha256:b08a2b7767573295e6a53b72214ca42522c4c7a8edbbc7e0af8ef470dcf2f2d3"
+
+  # zk-detections is checked out next to zk-platform (workspace repos/); pipelines and rules come from there
+  detections_dir = abspath(var.detections_dir != "" ? var.detections_dir : "${path.module}/../../../zk-detections")
+
+  # $${...} are Logstash env vars injected by ECK for elasticsearchRefs clusterName "eck"
+  suricata_pipeline = <<-EOT
+    input { elastic_agent { port => 5044 } }
+    ${file("${local.detections_dir}/pipelines/suricata.conf")}
+    output {
+      elasticsearch {
+        hosts => ["$${ECK_ES_HOSTS}"]
+        user => "$${ECK_ES_USER}"
+        password => "$${ECK_ES_PASSWORD}"
+        ssl_certificate_authorities => "$${ECK_ES_SSL_CERTIFICATE_AUTHORITY}"
+        data_stream => true
+      }
+    }
+  EOT
 }
 
 # --- TLS: lab root CA -> ClusterIssuer "zk-ca"
@@ -136,6 +156,97 @@ resource "helm_release" "eck_stack" {
         annotations = { "cert-manager.io/cluster-issuer" = "zk-ca" }
         hosts       = [{ host = "kibana.${var.domain}", path = "/" }]
         tls         = { enabled = true, secretName = "kibana-tls" }
+      }
+    }
+
+    # R-04: collectors. zk-auth logs are ECS already and go straight to Elasticsearch;
+    # Suricata eve.json goes through Logstash for the ECS mapping tested in zk-detections.
+    eck-agent = {
+      enabled           = true
+      fullnameOverride  = "elastic-agent"
+      image             = local.agent_image
+      elasticsearchRefs = [{ name = "elasticsearch" }]
+      config = {
+        id = "zk-lab-agent"
+        outputs = {
+          # ponytail: plain TCP inside the cluster; add TLS (cert-manager) if Logstash is exposed outside
+          logstash = { type = "logstash", hosts = ["logstash-ls-beats.${kubernetes_namespace_v1.siem.metadata[0].name}.svc:5044"] }
+        }
+        inputs = [
+          {
+            id          = "zk-auth-logs"
+            type        = "filestream"
+            use_output  = "default"
+            data_stream = { namespace = "default" }
+            streams = [{
+              id          = "zk-auth"
+              data_stream = { dataset = "zkauth" }
+              paths       = ["/var/log/pods/${kubernetes_namespace_v1.zk_auth.metadata[0].name}_zk-auth-*/zk-auth/*.log"] # real files; /var/log/containers holds symlinks filestream skips
+              parsers = [
+                { container = {} },
+                { ndjson = { target = "", overwrite_keys = true, add_error_key = true } },
+              ]
+            }]
+          },
+          {
+            id          = "suricata-eve"
+            type        = "filestream"
+            use_output  = "logstash"
+            data_stream = { namespace = "default" }
+            streams = [{
+              id          = "suricata"
+              data_stream = { dataset = "suricata" }
+              paths       = ["/var/log/suricata/eve.json"]
+            }]
+          },
+        ]
+      }
+      daemonSet = {
+        podTemplate = {
+          spec = {
+            serviceAccountName           = "elastic-agent"
+            automountServiceAccountToken = true
+            securityContext              = { runAsUser = 0 } # reads host log files
+            containers = [{
+              name      = "agent"
+              resources = { requests = { cpu = "100m", memory = "300Mi" }, limits = { memory = "700Mi" } }
+              volumeMounts = [
+                { name = "varlogcontainers", mountPath = "/var/log/containers", readOnly = true },
+                { name = "varlogpods", mountPath = "/var/log/pods", readOnly = true },
+                { name = "suricata", mountPath = "/var/log/suricata", readOnly = true },
+              ]
+            }]
+            volumes = [
+              { name = "varlogcontainers", hostPath = { path = "/var/log/containers" } },
+              { name = "varlogpods", hostPath = { path = "/var/log/pods" } },
+              { name = "suricata", hostPath = { path = "/var/log/suricata", type = "DirectoryOrCreate" } },
+            ]
+          }
+        }
+      }
+    }
+
+    eck-logstash = {
+      enabled           = true
+      fullnameOverride  = "logstash"
+      image             = local.logstash_image
+      elasticsearchRefs = [{ clusterName = "eck", name = "elasticsearch" }]
+      pipelines = [{
+        "pipeline.id"   = "suricata"
+        "config.string" = local.suricata_pipeline
+      }]
+      services = [{
+        name    = "beats"
+        service = { spec = { type = "ClusterIP", ports = [{ port = 5044, name = "beats", protocol = "TCP", targetPort = 5044 }] } }
+      }]
+      podTemplate = {
+        spec = {
+          containers = [{
+            name      = "logstash"
+            env       = [{ name = "LS_JAVA_OPTS", value = "-Xms512m -Xmx512m" }]
+            resources = { requests = { cpu = "250m", memory = "1Gi" }, limits = { memory = "1Gi" } }
+          }]
+        }
       }
     }
   })]
