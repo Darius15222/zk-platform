@@ -9,7 +9,7 @@ locals {
   # CI job names each repo must pass before merging; a repo joins once its CI exists on main
   required_checks = {
     "zk-auth"       = ["test", "scan", "image"]
-    "zk-detections" = ["test", "scan"]
+    "zk-detections" = ["test", "scan", "sigma"]
   }
   github_actions_app_id = 15368 # only GitHub Actions may report these checks
 }
