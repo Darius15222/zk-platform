@@ -1,0 +1,126 @@
+# lint: Terraform fmt/validate, tflint, checkov. e2e: the whole lab on a throwaway k3d cluster in the runner,
+# then a simulated attack that must raise one alert per detection rule (R-04, R-05). No repository secrets used.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+env:
+  TF_VERSION: 1.16.1
+  K3D_VERSION: v5.9.0
+  K3D_SHA256: 06d8f25bc3a971c4eb29e0ff08429b180402db0f4dec838c9eac427e296800a0
+  TFLINT: ghcr.io/terraform-linters/tflint:v0.65.0@sha256:2788f4d4fc663c0e953b011b01bf443fe5bfce7587ee916e588e6057b85d6359
+  CHECKOV: bridgecrew/checkov:3.4.0@sha256:ece5efac4443084ca273072909985dce988a81e8cc94faa305aeda0df27c68f9
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: zk-platform
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: ${{ github.repository_owner }}/zk-detections
+          path: zk-detections
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - name: terraform fmt and validate
+        working-directory: zk-platform
+        run: |
+          terraform fmt -check -recursive
+          for root in github envs/local envs/detections; do
+            terraform -chdir=$root init -backend=false -input=false >/dev/null
+            terraform -chdir=$root validate
+          done
+      - name: tflint
+        run: docker run --rm -v "$PWD/zk-platform:/data" -w /data "$TFLINT" --recursive
+      - name: checkov
+        run: docker run --rm -v "$PWD/zk-platform:/src" "$CHECKOV" -d /src --framework terraform --quiet --compact
+
+  e2e:
+    needs: lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    env:
+      ZK_KUBECONFIG: /home/runner/.kube/config.zk-lab
+      TF_VAR_kubeconfig: /home/runner/.kube/config.zk-lab
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: zk-platform
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: ${{ github.repository_owner }}/zk-detections
+          path: zk-detections
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: ${{ github.repository_owner }}/zk-auth
+          path: zk-auth
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: k3d cluster (same shape as local-stack/up.sh)
+        run: |
+          curl -sSLo k3d "https://github.com/k3d-io/k3d/releases/download/$K3D_VERSION/k3d-linux-amd64"
+          echo "$K3D_SHA256  k3d" | sha256sum -c -
+          sudo install -m 755 k3d /usr/local/bin/k3d
+          k3d cluster create zk-lab -p "443:443@loadbalancer" -p "80:80@loadbalancer" \
+            --kubeconfig-update-default=false --kubeconfig-switch-context=false --wait
+          mkdir -p ~/.kube && k3d kubeconfig get zk-lab > "$ZK_KUBECONFIG"
+          echo "127.0.0.1 kibana.zk.local auth.zk.local" | sudo tee -a /etc/hosts
+          (cd zk-auth && npm ci --ignore-scripts)
+
+      - name: ephemeral credentials and local state (no SOPS key, no floci in CI)
+        run: |
+          pw=$(openssl rand -hex 20)
+          echo "::add-mask::$pw"
+          echo "TF_VAR_zk_admin_password=$pw" >> "$GITHUB_ENV"
+          for root in envs/local envs/detections; do
+            printf 'terraform {\n  backend "local" {}\n}\n' > "zk-platform/$root/ci_override.tf"
+          done
+
+      - name: platform (cert-manager, ECK, Elastic, Agent, Logstash, Suricata, zk-auth)
+        working-directory: zk-platform
+        run: |
+          terraform -chdir=envs/local init -input=false >/dev/null
+          terraform -chdir=envs/local apply -input=false -auto-approve
+          kubectl --kubeconfig "$ZK_KUBECONFIG" -n siem wait --for=jsonpath='{.status.health}'=green kibana/siem-eck-kibana --timeout=600s
+
+      - name: detection rules
+        working-directory: zk-platform
+        run: make detections
+
+      - name: attack must raise one alert per rule
+        working-directory: zk-platform
+        run: |
+          since=$(date -u +%FT%TZ)
+          scripts/attack.sh
+          SINCE=$since scripts/verify-alerts.sh 4 600
+
+      - name: diagnostics
+        if: failure()
+        run: |
+          kubectl --kubeconfig "$ZK_KUBECONFIG" get pods -A
+          kubectl --kubeconfig "$ZK_KUBECONFIG" get events -A --sort-by=.lastTimestamp | tail -40
