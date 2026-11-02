@@ -6,7 +6,7 @@ WORKSPACE ?= ../..
 GH = cd github && GITHUB_TOKEN=$$(gh auth token)
 LOCAL = terraform -chdir=envs/local
 
-.PHONY: state github-init github-plan github-apply secret-elastic show-password init plan up down
+.PHONY: state github-init github-plan github-apply secret-elastic show-password init plan up down detections
 
 state: ## create the Terraform state bucket in floci (once)
 	aws --endpoint-url http://localhost:4566 --region eu-central-1 s3 mb s3://zk-tfstate || true
@@ -37,9 +37,17 @@ init: state
 plan:
 	$(LOCAL) plan -input=false
 
-up: ## start the cluster, then converge everything
+up: ## start the cluster, converge the platform, then load the detection rules
 	$(WORKSPACE)/local-stack/up.sh
 	$(LOCAL) apply -input=false -auto-approve
+	$(MAKE) detections
+
+DET = terraform -chdir=envs/detections
+
+detections: ## R-05: Sigma rules from zk-detections -> Elastic Security (needs Kibana up and kibana.zk.local in /etc/hosts)
+	kubectl --kubeconfig $(HOME)/.kube/config.zk-lab -n cert-manager get secret zk-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > envs/detections/zk-root-ca.crt
+	$(DET) init -input=false >/dev/null
+	$(DET) apply -input=false -auto-approve
 
 down:
 	$(WORKSPACE)/local-stack/down.sh
