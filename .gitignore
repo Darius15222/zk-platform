@@ -6,3 +6,6 @@
 !.env.example
 *.key
 kubeconfig*
+
+# CI writes backend overrides next to each root
+*_override.tf

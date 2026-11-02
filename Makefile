@@ -6,7 +6,7 @@ WORKSPACE ?= ../..
 GH = cd github && GITHUB_TOKEN=$$(gh auth token)
 LOCAL = terraform -chdir=envs/local
 
-.PHONY: state github-init github-plan github-apply secret-elastic show-password init plan up down detections
+.PHONY: state github-init github-plan github-apply secret-elastic show-password init plan up down detections attack
 
 state: ## create the Terraform state bucket in floci (once)
 	aws --endpoint-url http://localhost:4566 --region eu-central-1 s3 mb s3://zk-tfstate || true
@@ -48,6 +48,9 @@ detections: ## R-05: Sigma rules from zk-detections -> Elastic Security (needs K
 	kubectl --kubeconfig $(HOME)/.kube/config.zk-lab -n cert-manager get secret zk-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > envs/detections/zk-root-ca.crt
 	$(DET) init -input=false >/dev/null
 	$(DET) apply -input=false -auto-approve
+
+attack: ## R-05 end to end: simulated attack, then wait for one alert per detection rule
+	@since=$$(date -u +%FT%TZ); scripts/attack.sh && SINCE=$$since scripts/verify-alerts.sh
 
 down:
 	$(WORKSPACE)/local-stack/down.sh

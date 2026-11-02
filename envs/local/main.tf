@@ -105,8 +105,21 @@ resource "kubernetes_namespace_v1" "siem" {
   }
 }
 
+# SOPS is the source of the zk-admin password; CI passes an ephemeral one instead (no repo secrets needed)
+variable "zk_admin_password" {
+  description = "CI only: overrides the SOPS secret when set"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 data "sops_file" "elastic" {
+  count       = var.zk_admin_password == "" ? 1 : 0
   source_file = "${path.module}/../../secrets/elastic.enc.yaml"
+}
+
+locals {
+  zk_admin_password = var.zk_admin_password != "" ? var.zk_admin_password : data.sops_file.elastic[0].data["zk_admin_password"]
 }
 
 # file-realm user for humans; the built-in "elastic" superuser stays an ECK-generated secret
@@ -118,7 +131,7 @@ resource "kubernetes_secret_v1" "zk_admin" {
   type = "kubernetes.io/basic-auth"
   data = {
     username = "zk-admin"
-    password = data.sops_file.elastic.data["zk_admin_password"]
+    password = local.zk_admin_password
     roles    = "superuser"
   }
 }
