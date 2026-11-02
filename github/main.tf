@@ -10,6 +10,7 @@ locals {
   required_checks = {
     "zk-auth"       = ["test", "scan", "image"]
     "zk-detections" = ["test", "scan", "sigma"]
+    "zk-platform"   = ["lint", "e2e"]
   }
   github_actions_app_id = 15368 # only GitHub Actions may report these checks
 }
