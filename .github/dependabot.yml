@@ -6,6 +6,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown: # wait a week: a freshly published version can be malicious or broken
+      default-days: 7
     groups:
       actions:
         patterns: ["*"]
@@ -17,6 +19,8 @@ updates:
       - /envs/detections
     schedule:
       interval: weekly
+    cooldown: # wait a week: a freshly published version can be malicious or broken
+      default-days: 7
     groups:
       providers:
         patterns: ["*"]
