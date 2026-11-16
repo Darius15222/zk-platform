@@ -33,6 +33,6 @@ expect "forged proof rejected" "$(c -o /dev/null -w '%{http_code}' -d "$(prove "
 c -o /dev/null -d '{"username":"victim","password":"Correct-horse-9"}' "$U/register/password" || true
 for i in $(seq 1 25); do
   code=$(c -o /dev/null -w '%{http_code}' -d "{\"username\":\"victim\",\"password\":\"guess$i\"}" "$U/login/password")
-  [[ $code == 401 ]] || { echo "FAIL wrong password $i: got $code"; exit 1; }
+  [[ $code == 401 || $code == 429 ]] || { echo "FAIL wrong password $i: got $code"; exit 1; } # 429: zk-auth lockout after 10 failures (R-07)
 done
 echo "ok   25 wrong passwords rejected"
