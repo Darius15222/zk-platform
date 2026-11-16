@@ -1,0 +1,26 @@
+# R-03: pins age; Dependabot proposes the bump, CI decides. Weekly and grouped to keep the PR count low.
+# Not covered (bump by hand): image digests in Terraform strings and in the workflow `env:` block, Helm chart versions.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown: # wait a week: a freshly published version can be malicious or broken
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: terraform
+    directories:
+      - /github
+      - /envs/local
+      - /envs/detections
+    schedule:
+      interval: weekly
+    cooldown: # wait a week: a freshly published version can be malicious or broken
+      default-days: 7
+    groups:
+      providers:
+        patterns: ["*"]
