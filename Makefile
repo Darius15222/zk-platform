@@ -6,7 +6,7 @@ WORKSPACE ?= ../..
 GH = cd github && GITHUB_TOKEN=$$(gh auth token)
 LOCAL = terraform -chdir=envs/local
 
-.PHONY: state github-init github-plan github-apply secret-elastic show-password init plan up down detections attack
+.PHONY: state github-init github-plan github-apply secret-elastic show-password init plan up down detections attack triage netpol
 
 state: ## create the Terraform state bucket in floci (once)
 	aws --endpoint-url http://localhost:4566 --region eu-central-1 s3 mb s3://zk-tfstate || true
@@ -51,6 +51,13 @@ detections: ## R-05: Sigma rules from zk-detections -> Elastic Security (needs K
 
 attack: ## R-05 end to end: simulated attack, then wait for one alert per detection rule
 	@since=$$(date -u +%FT%TZ); scripts/attack.sh && SINCE=$$since scripts/verify-alerts.sh
+
+MIN ?= 30
+triage: ## R-09: read-only JSON of the last MIN minutes of alerts and their context, input for the alert-triage skill
+	@scripts/alerts.sh $(MIN)
+
+netpol: ## R-08: pods outside siem cannot reach Elasticsearch or Logstash, pods inside can
+	@scripts/verify-netpol.sh
 
 down:
 	$(WORKSPACE)/local-stack/down.sh
