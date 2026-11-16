@@ -8,12 +8,12 @@ terraform {
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "3.4.0"
+      version = "3.5.0"
     }
     # applies CRD-based manifests (cert-manager issuers) without needing the CRD at plan time
     kubectl = {
       source  = "alekc/kubectl"
-      version = "3.0.0"
+      version = "3.0.1"
     }
     sops = {
       source  = "carlpett/sops"
