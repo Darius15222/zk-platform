@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Read-only export for alert triage (R-09): the zk-lab alerts of the last N minutes and, per source address,
 # the events around them. Prints one JSON document. Runs _search only; nothing is closed, changed or deleted.
-# Same access path as verify-alerts.sh: from inside the Elasticsearch pod, the password is never printed.
-# ponytail: uses the ECK "elastic" user; a dedicated read-only API key is the upgrade if triage ever runs unattended
+# Runs from inside the Elasticsearch pod as zk-triage, a file-realm user whose role can only read the alert and log
+# indices (envs/local/main.tf); the password is never printed.
 # Usage: alerts.sh [minutes, default 30]
 set -euo pipefail
 
@@ -12,9 +12,9 @@ K="kubectl --kubeconfig ${ZK_KUBECONFIG:-$HOME/.kube/config.zk-lab} -n siem"
 
 es() {
   local pw
-  pw=$($K get secret elasticsearch-es-elastic-user -o go-template='{{.data.elastic | base64decode}}')
+  pw=$($K get secret zk-triage -o go-template='{{.data.password | base64decode}}')
   $K exec elasticsearch-es-default-0 -c elasticsearch -- \
-    curl -sk -u "elastic:$pw" -H 'content-type: application/json' "https://localhost:9200$1" -d "$2"
+    curl -sk -u "zk-triage:$pw" -H 'content-type: application/json' "https://localhost:9200$1" -d "$2"
 }
 
 since="now-${min}m"
