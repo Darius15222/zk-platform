@@ -59,6 +59,13 @@ resource "elasticstack_kibana_security_detection_rule" "sigma" {
   }]
 }
 
+# R-05: the zk-lab dashboard (logins by outcome, failure reasons, alerts by rule, top source IPs), exported from Kibana.
+# overwrite: the file in zk-detections is the source of truth; edits made in the UI are replaced on the next apply.
+resource "elasticstack_kibana_import_saved_objects" "dashboard" {
+  file_contents = file("${local.detections_dir}/dashboards/zk-lab.ndjson")
+  overwrite     = true
+}
+
 output "rules" {
   value = { for k, r in elasticstack_kibana_security_detection_rule.sigma : r.name => k }
 }
