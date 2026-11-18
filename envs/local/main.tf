@@ -136,6 +136,43 @@ resource "kubernetes_secret_v1" "zk_admin" {
   }
 }
 
+# R-09: read-only identity for alert triage (scripts/alerts.sh), so an unattended triage never holds the superuser
+resource "kubernetes_secret_v1" "zk_triage_role" {
+  metadata {
+    name      = "zk-triage-role"
+    namespace = kubernetes_namespace_v1.siem.metadata[0].name
+  }
+  data = {
+    "roles.yml" = yamlencode({
+      zk-triage = {
+        cluster = []
+        indices = [{
+          names      = [".alerts-security.alerts-default", ".internal.alerts-security.alerts-default-*", "logs-zkauth-*", "logs-suricata-*"]
+          privileges = ["read"]
+        }]
+      }
+    })
+  }
+}
+
+resource "random_password" "zk_triage" {
+  length  = 32
+  special = false
+}
+
+resource "kubernetes_secret_v1" "zk_triage" {
+  metadata {
+    name      = "zk-triage"
+    namespace = kubernetes_namespace_v1.siem.metadata[0].name
+  }
+  type = "kubernetes.io/basic-auth"
+  data = {
+    username = "zk-triage"
+    password = random_password.zk_triage.result
+    roles    = "zk-triage"
+  }
+}
+
 resource "helm_release" "eck_stack" {
   depends_on = [helm_release.eck_operator, kubectl_manifest.ca_issuer]
 
@@ -148,7 +185,10 @@ resource "helm_release" "eck_stack" {
   values = [yamlencode({
     eck-elasticsearch = {
       image = local.es_image
-      auth  = { fileRealm = [{ secretName = kubernetes_secret_v1.zk_admin.metadata[0].name }] }
+      auth = {
+        roles     = [{ secretName = kubernetes_secret_v1.zk_triage_role.metadata[0].name }]
+        fileRealm = [{ secretName = kubernetes_secret_v1.zk_admin.metadata[0].name }, { secretName = kubernetes_secret_v1.zk_triage.metadata[0].name }]
+      }
       nodeSets = [{
         name   = "default"
         count  = 1

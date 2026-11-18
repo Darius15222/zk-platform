@@ -15,6 +15,10 @@ terraform {
       source  = "alekc/kubectl"
       version = "3.0.1"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "3.9.1"
+    }
     sops = {
       source  = "carlpett/sops"
       version = "1.4.1"
