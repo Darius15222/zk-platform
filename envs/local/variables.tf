@@ -13,7 +13,7 @@ variable "domain" {
 variable "zk_auth_image" {
   description = "zk-auth image pinned by digest; bumped by PR when zk-auth CI publishes a new one"
   type        = string
-  default     = "ghcr.io/darius15222/zk-auth@sha256:a8588c83db00ff49ca7ad30b7c327f7b638a7fd80eba183cfd61a19626af1c52"
+  default     = "ghcr.io/darius15222/zk-auth@sha256:b9d6b98322cbd1edb7c44920ff10582f96b4adb65d83b3fed1b81d0811515d0b"
 
   validation {
     condition     = can(regex("@sha256:[0-9a-f]{64}$", var.zk_auth_image))
