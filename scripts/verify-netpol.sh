@@ -6,7 +6,7 @@
 set -uo pipefail
 
 K="kubectl --kubeconfig ${ZK_KUBECONFIG:-$HOME/.kube/config.zk-lab}"
-probe='const s=require("net").connect({host:process.argv[1],port:+process.argv[2],timeout:4000});s.on("connect",()=>{console.log("open");process.exit(0)});s.on("timeout",()=>{console.log("blocked (timeout)");process.exit(0)});s.on("error",e=>{console.log("blocked ("+e.code+")");process.exit(0)})'
+probe='const s=require("net").connect({host:process.argv[1],port:+process.argv[2],timeout:4000});s.on("connect",()=>{console.log("open");process.exit(0)});s.on("timeout",()=>{console.log("blocked (timeout)");process.exit(0)});s.on("error",e=>{console.log((e.code=="ECONNREFUSED"?"blocked":"error")+" ("+e.code+")");process.exit(0)})'
 fail=0
 expect() { [[ $2 == $3* ]] && echo "ok   $1 -> $2" || { echo "FAIL $1 -> $2, want $3"; fail=1; }; }
 

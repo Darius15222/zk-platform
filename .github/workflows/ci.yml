@@ -56,6 +56,10 @@ jobs:
         run: |
           img=$(sed -nE 's/^ *default *= *"(ghcr\.io\/[^"]+)".*/\1/p' zk-platform/envs/local/variables.tf)
           [[ $img =~ @sha256:[0-9a-f]{64}$ ]] || { echo "no digest-pinned zk-auth image in envs/local/variables.tf"; exit 1; }
+          # the default is what gets deployed only if nothing overrides it
+          grep -q 'image *= *var.zk_auth_image' zk-platform/envs/local/zk-auth.tf || { echo "zk-auth.tf does not deploy var.zk_auth_image"; exit 1; }
+          ! grep -rl zk_auth_image zk-platform/envs/local --include='*.tfvars' --include='*.tfvars.json' || { echo "a tfvars file overrides zk_auth_image"; exit 1; }
+          ! grep -n 'TF_VAR_zk_auth_image[:=]' zk-platform/.github/workflows/*.yml || { echo "a workflow overrides zk_auth_image"; exit 1; }
           cosign verify "$img" --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity "https://github.com/$OWNER/zk-auth/.github/workflows/ci.yml@refs/heads/main" >/dev/null
           echo "ok   $img is signed by zk-auth CI on main"
@@ -97,7 +101,7 @@ jobs:
           curl -sSLo k3d "https://github.com/k3d-io/k3d/releases/download/$K3D_VERSION/k3d-linux-amd64"
           echo "$K3D_SHA256  k3d" | sha256sum -c -
           sudo install -m 755 k3d /usr/local/bin/k3d
-          k3d cluster create zk-lab -p "443:443@loadbalancer" -p "80:80@loadbalancer" \
+          k3d cluster create zk-lab -p "127.0.0.1:443:443@loadbalancer" \
             --kubeconfig-update-default=false --kubeconfig-switch-context=false --wait
           mkdir -p ~/.kube && k3d kubeconfig get zk-lab > "$ZK_KUBECONFIG"
           echo "127.0.0.1 kibana.zk.local auth.zk.local" | sudo tee -a /etc/hosts

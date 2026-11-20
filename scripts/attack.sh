@@ -14,7 +14,8 @@ kubectl --kubeconfig "$KC" -n cert-manager get secret zk-root-ca -o jsonpath='{.
 
 c() { curl -sS --max-time 15 --cacert "$ca" --resolve "${U#https://}:443:127.0.0.1" -H 'content-type: application/json' "$@"; }
 expect() { [[ $2 == "$3" ]] && echo "ok   $1" || { echo "FAIL $1: got $2, want $3"; exit 1; }; }
-prove() { (cd "$APP" && node --input-type=module -e "import {prove} from './src/schnorr.ts'; const p=prove(0x$1n,'$2','$3'); console.log(JSON.stringify({username:'$2',nonce:'$3',...p}))"); }
+prove() { [[ $3 =~ ^[0-9a-f]{64}$ ]] || { echo "FAIL nonce is not 64 hex characters" >&2; exit 1; }
+  (cd "$APP" && node --input-type=module -e "import {prove} from './src/schnorr.ts'; const p=prove(0x$1n,'$2','$3'); console.log(JSON.stringify({username:'$2',nonce:'$3',...p}))"); }
 
 user=attack$RANDOM
 keys=$(cd "$APP" && node src/client.ts keygen)
