@@ -12,7 +12,7 @@ ca=$(mktemp)
 trap 'rm -f "$ca"' EXIT
 kubectl --kubeconfig "$KC" -n cert-manager get secret zk-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d >"$ca"
 
-c() { curl -sS --cacert "$ca" --resolve "${U#https://}:443:127.0.0.1" -H 'content-type: application/json' "$@"; }
+c() { curl -sS --max-time 15 --cacert "$ca" --resolve "${U#https://}:443:127.0.0.1" -H 'content-type: application/json' "$@"; }
 expect() { [[ $2 == "$3" ]] && echo "ok   $1" || { echo "FAIL $1: got $2, want $3"; exit 1; }; }
 prove() { (cd "$APP" && node --input-type=module -e "import {prove} from './src/schnorr.ts'; const p=prove(0x$1n,'$2','$3'); console.log(JSON.stringify({username:'$2',nonce:'$3',...p}))"); }
 

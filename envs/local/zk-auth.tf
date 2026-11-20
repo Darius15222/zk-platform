@@ -47,7 +47,7 @@ resource "kubernetes_deployment_v1" "zk_auth" {
           }
 
           env {
-            name  = "TRUST_PROXY" # Traefik sets X-Forwarded-For; source.ip is the real client
+            name  = "TRUST_PROXY" # source.ip = the X-Forwarded-For hop Traefik appends; in k3d that is the svclb gateway 10.42.0.1
             value = "1"
           }
 
@@ -98,9 +98,12 @@ resource "kubernetes_service_v1" "zk_auth" {
 
 resource "kubernetes_ingress_v1" "zk_auth" {
   metadata {
-    name        = "zk-auth"
-    namespace   = kubernetes_namespace_v1.zk_auth.metadata[0].name
-    annotations = { "cert-manager.io/cluster-issuer" = "zk-ca" }
+    name      = "zk-auth"
+    namespace = kubernetes_namespace_v1.zk_auth.metadata[0].name
+    annotations = {
+      "cert-manager.io/cluster-issuer"                   = "zk-ca"
+      "traefik.ingress.kubernetes.io/router.entrypoints" = "websecure" # HTTPS only: no route on :80
+    }
   }
   spec {
     ingress_class_name = "traefik"

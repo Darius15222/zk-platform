@@ -48,6 +48,17 @@ jobs:
         run: docker run --rm -v "$PWD/zk-platform:/data" -w /data "$TFLINT" --recursive
       - name: checkov
         run: docker run --rm -v "$PWD/zk-platform:/src" "$CHECKOV" -d /src --framework terraform --quiet --compact
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+      # R-03: deploy only an image that zk-auth CI signed on main; e2e alone would accept any digest that passes the attack
+      - name: zk-auth image is signed by zk-auth CI
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          img=$(sed -nE 's/^ *default *= *"(ghcr\.io\/[^"]+)".*/\1/p' zk-platform/envs/local/variables.tf)
+          [[ $img =~ @sha256:[0-9a-f]{64}$ ]] || { echo "no digest-pinned zk-auth image in envs/local/variables.tf"; exit 1; }
+          cosign verify "$img" --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/$OWNER/zk-auth/.github/workflows/ci.yml@refs/heads/main" >/dev/null
+          echo "ok   $img is signed by zk-auth CI on main"
 
   e2e:
     needs: lint
@@ -117,7 +128,7 @@ jobs:
         run: |
           since=$(date -u +%FT%TZ)
           scripts/attack.sh
-          SINCE=$since scripts/verify-alerts.sh 4 600
+          SINCE=$since scripts/verify-alerts.sh 600
 
       - name: diagnostics
         if: failure()
