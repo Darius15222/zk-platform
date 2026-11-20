@@ -1,5 +1,5 @@
 # R-03: pins age; Dependabot proposes the bump, CI decides. Weekly and grouped to keep the PR count low.
-# Not covered (bump by hand): image digests in Terraform strings and in the workflow `env:` block, Helm chart versions.
+# Image digests in workflows, Terraform strings and tests, and Helm charts, are bumped by Renovate (renovate.json).
 version: 2
 updates:
   - package-ecosystem: github-actions
