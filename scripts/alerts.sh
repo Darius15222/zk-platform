@@ -8,20 +8,13 @@ set -euo pipefail
 
 min=${1:-30}
 [[ $min =~ ^[0-9]{1,4}$ ]] || { echo "minutes must be a number" >&2; exit 2; }
-K="kubectl --kubeconfig ${ZK_KUBECONFIG:-$HOME/.kube/config.zk-lab} -n siem"
-
-es() {
-  local pw
-  pw=$($K get secret zk-triage -o go-template='{{.data.password | base64decode}}')
-  $K exec elasticsearch-es-default-0 -c elasticsearch -- \
-    curl -sk -u "zk-triage:$pw" -H 'content-type: application/json' "https://localhost:9200$1" -d "$2"
-}
+. "$(dirname "$0")/es.sh"
 
 since="now-${min}m"
-alerts=$(es /.alerts-security.alerts-default/_search '{"size":50,"sort":[{"@timestamp":"desc"}],
+alerts=$(es '/.alerts-security.alerts-default/_search?ignore_unavailable=true' '{"size":50,"sort":[{"@timestamp":"desc"}],
   "_source":["@timestamp","kibana.alert.rule.name","kibana.alert.severity","kibana.alert.reason","kibana.alert.rule.threat","source.ip","user.name","event.reason"],
   "query":{"bool":{"filter":[{"range":{"@timestamp":{"gte":"'"$since"'"}}},{"term":{"kibana.alert.rule.tags":"zk-lab"}}]}}}' |
-  jq '[.hits.hits[]._source]')
+  jq '[.hits.hits[]?._source]')
 
 # context: logins (zk-auth) and IDS alerts (Suricata) in the same window, summarised per source so the output stays small;
 # plain network flow records are left out, they bury the signal

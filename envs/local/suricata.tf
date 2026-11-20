@@ -22,7 +22,7 @@ resource "kubernetes_daemon_set_v1" "suricata" {
   # checkov:skip=CKV_K8S_22:the image writes its default config to /etc/suricata at start
   # checkov:skip=CKV_K8S_23:entrypoint starts as root to set capabilities, Suricata then runs as the suricata user
   # checkov:skip=CKV_K8S_28:NET_ADMIN is required to put the interface in capture mode
-  # checkov:skip=CKV_K8S_37:only NET_ADMIN, NET_RAW and SYS_NICE are added, everything else is dropped
+  # checkov:skip=CKV_K8S_37:ALL is dropped; capture needs NET_ADMIN, NET_RAW, SYS_NICE; the entrypoint needs CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID, SETPCAP to hand the interface to the suricata user
   # checkov:skip=CKV_K8S_40:entrypoint needs uid 0 to switch to the suricata user
   # checkov:skip=CKV_K8S_43:image is pinned by digest
   # checkov:skip=CKV_K8S_8:no liveness endpoint in Suricata; the process exiting restarts the pod

@@ -1,4 +1,4 @@
-# Elastic SIEM (ECK) behind Traefik with TLS from a lab CA (cert-manager). R-02: the only credential comes from SOPS.
+# Elastic SIEM (ECK) behind Traefik with TLS from a lab CA (cert-manager). R-02: the human credential comes from SOPS; zk-triage gets a random password (R-09).
 
 locals {
   # images pinned by digest (harness/pinning.md)
@@ -204,11 +204,14 @@ resource "helm_release" "eck_stack" {
       # Traefik terminates TLS with the cert-manager certificate; Kibana serves plain HTTP inside the cluster
       http = { tls = { selfSignedCertificate = { disabled = true } } }
       ingress = {
-        enabled     = true
-        className   = "traefik"
-        annotations = { "cert-manager.io/cluster-issuer" = "zk-ca" }
-        hosts       = [{ host = "kibana.${var.domain}", path = "/" }]
-        tls         = { enabled = true, secretName = "kibana-tls" }
+        enabled   = true
+        className = "traefik"
+        annotations = {
+          "cert-manager.io/cluster-issuer"                   = "zk-ca"
+          "traefik.ingress.kubernetes.io/router.entrypoints" = "websecure" # HTTPS only: no route on :80
+        }
+        hosts = [{ host = "kibana.${var.domain}", path = "/" }]
+        tls   = { enabled = true, secretName = "kibana-tls" }
       }
     }
 
@@ -264,13 +267,11 @@ resource "helm_release" "eck_stack" {
               name      = "agent"
               resources = { requests = { cpu = "100m", memory = "300Mi" }, limits = { memory = "700Mi" } }
               volumeMounts = [
-                { name = "varlogcontainers", mountPath = "/var/log/containers", readOnly = true },
                 { name = "varlogpods", mountPath = "/var/log/pods", readOnly = true },
                 { name = "suricata", mountPath = "/var/log/suricata", readOnly = true },
               ]
             }]
             volumes = [
-              { name = "varlogcontainers", hostPath = { path = "/var/log/containers" } },
               { name = "varlogpods", hostPath = { path = "/var/log/pods" } },
               { name = "suricata", hostPath = { path = "/var/log/suricata", type = "DirectoryOrCreate" } },
             ]
