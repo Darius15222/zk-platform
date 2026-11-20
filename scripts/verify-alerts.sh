@@ -10,7 +10,7 @@ want=$(grep -c . "${ZK_DETECTIONS_DIR:-$here/../../zk-detections}/rules/elastic/
 deadline=$((SECONDS + ${1:-420}))
 . "$here/es.sh"
 
-q='{"size":0,"query":{"bool":{"filter":[{"range":{"@timestamp":{"gte":"'"${SINCE:-now-30m}"'"}}},{"term":{"kibana.alert.rule.tags":"zk-lab"}}]}},"aggs":{"r":{"terms":{"field":"kibana.alert.rule.name"}}}}'
+q='{"size":0,"query":{"bool":{"filter":[{"range":{"@timestamp":{"gte":"'"${SINCE:-now-30m}"'"}}},{"term":{"kibana.alert.rule.tags":"zk-lab"}}]}},"aggs":{"r":{"terms":{"field":"kibana.alert.rule.name","size":1000}}}}'
 while :; do
   rules=$(es /.alerts-security.alerts-default/_search "$q" 2>/dev/null | jq -r '.aggregations.r.buckets[]? | "\(.key): \(.doc_count)"' || true)
   got=$(grep -c . <<<"$rules" || true)

@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Read-only export for alert triage (R-09): the zk-lab alerts of the last N minutes and, per source address,
 # the events around them. Prints one JSON document. Runs _search only; nothing is closed, changed or deleted.
-# Runs from inside the Elasticsearch pod as zk-triage, a file-realm user whose role can only read the alert and log
-# indices (envs/local/main.tf); the password is never printed.
+# Access: scripts/es.sh (read-only zk-triage user).
 # Usage: alerts.sh [minutes, default 30]
 set -euo pipefail
 

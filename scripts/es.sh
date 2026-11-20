@@ -6,5 +6,5 @@ K="kubectl --kubeconfig ${ZK_KUBECONFIG:-$HOME/.kube/config.zk-lab} -n siem --re
 es() {
   $K get secret zk-triage -o go-template='user = "zk-triage:{{.data.password | base64decode}}"{{"\n"}}' |
     $K exec -i elasticsearch-es-default-0 -c elasticsearch -- \
-      curl -sk --max-time 30 -K - -H 'content-type: application/json' "https://localhost:9200$1" -d "$2"
+      curl -sk --fail-with-body --max-time 30 -K - -H 'content-type: application/json' "https://localhost:9200$1" -d "$2"
 }
