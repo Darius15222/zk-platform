@@ -34,7 +34,9 @@ resource "elasticstack_kibana_security_detection_rule" "sigma" {
   type        = each.value.type
   language    = each.value.language
   query       = each.value.query
-  index       = null # every rule is ES|QL, which reads its index from the query
+  # ES|QL rules read their index from the query, so index is null at apply time; the conditional (not a literal null)
+  # keeps `terraform validate` from failing on the provider check "one of index or data_view_id must be set"
+  index       = each.value.type == "esql" ? null : [regex("^from ([^ ]+)", each.value.query)[0]]
   severity    = each.value.severity
   risk_score  = each.value.risk_score
   # ponytail: 1m keeps the lab demo snappy; the correlation window (5m) is inside the query
