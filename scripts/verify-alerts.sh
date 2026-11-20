@@ -1,19 +1,14 @@
 #!/usr/bin/env bash
 # Waits until every zk-lab detection rule has raised an alert since SINCE (run after attack.sh).
-# Queries Elasticsearch from inside its pod with the ECK "elastic" user; the password is never printed.
-# Usage: SINCE=<ISO time the attack started> verify-alerts.sh [expected-rule-count] [timeout-seconds]
+# Queries Elasticsearch as the read-only zk-triage user (scripts/es.sh). The expected count is the number of rules in
+# zk-detections, so a new rule raises it without editing this script, the Makefile or CI.
+# Usage: SINCE=<ISO time the attack started> verify-alerts.sh [timeout-seconds]
 set -euo pipefail
 
-want=${1:-4}
-deadline=$((SECONDS + ${2:-420}))
-K="kubectl --kubeconfig ${ZK_KUBECONFIG:-$HOME/.kube/config.zk-lab} -n siem"
-
-es() {
-  local pw
-  pw=$($K get secret elasticsearch-es-elastic-user -o go-template='{{.data.elastic | base64decode}}')
-  $K exec elasticsearch-es-default-0 -c elasticsearch -- \
-    curl -sk -u "elastic:$pw" -H 'content-type: application/json' "https://localhost:9200$1" -d "$2"
-}
+here=$(dirname "$0")
+want=$(grep -c . "${ZK_DETECTIONS_DIR:-$here/../../zk-detections}/rules/elastic/sigma-rules.ndjson")
+deadline=$((SECONDS + ${1:-420}))
+. "$here/es.sh"
 
 q='{"size":0,"query":{"bool":{"filter":[{"range":{"@timestamp":{"gte":"'"${SINCE:-now-30m}"'"}}},{"term":{"kibana.alert.rule.tags":"zk-lab"}}]}},"aggs":{"r":{"terms":{"field":"kibana.alert.rule.name"}}}}'
 while :; do

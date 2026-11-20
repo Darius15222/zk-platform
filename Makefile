@@ -3,6 +3,9 @@ export AWS_ACCESS_KEY_ID ?= test
 export AWS_SECRET_ACCESS_KEY ?= test
 
 WORKSPACE ?= ../..
+# one cluster config for the scripts (ZK_KUBECONFIG) and for Terraform (TF_VAR_kubeconfig)
+export ZK_KUBECONFIG ?= $(HOME)/.kube/config.zk-lab
+export TF_VAR_kubeconfig ?= $(ZK_KUBECONFIG)
 GH = cd github && GITHUB_TOKEN=$$(gh auth token)
 LOCAL = terraform -chdir=envs/local
 
@@ -45,7 +48,7 @@ up: ## start the cluster, converge the platform, then load the detection rules
 DET = terraform -chdir=envs/detections
 
 detections: ## R-05: Sigma rules from zk-detections -> Elastic Security (needs Kibana up and kibana.zk.local in /etc/hosts)
-	kubectl --kubeconfig $(HOME)/.kube/config.zk-lab -n cert-manager get secret zk-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > envs/detections/zk-root-ca.crt
+	kubectl --kubeconfig $(ZK_KUBECONFIG) -n cert-manager get secret zk-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > envs/detections/zk-root-ca.crt
 	$(DET) init -input=false >/dev/null
 	$(DET) apply -input=false -auto-approve
 

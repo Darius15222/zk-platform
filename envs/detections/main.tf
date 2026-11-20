@@ -1,4 +1,4 @@
-# R-05: Sigma rules from zk-detections (converted to ES|QL by its CI) become Elastic Security detection rules.
+# R-05: Sigma rules from zk-detections (compiled to ES|QL by its rules/build.sh, committed, drift-checked by its CI) become Elastic Security detection rules.
 
 variable "kibana_url" {
   type    = string
@@ -34,7 +34,7 @@ resource "elasticstack_kibana_security_detection_rule" "sigma" {
   type        = each.value.type
   language    = each.value.language
   query       = each.value.query
-  index       = each.value.type == "esql" ? null : [regex("^from ([^ ]+)", each.value.query)[0]] # ES|QL reads its index from the query itself
+  index       = null # every rule is ES|QL, which reads its index from the query
   severity    = each.value.severity
   risk_score  = each.value.risk_score
   # ponytail: 1m keeps the lab demo snappy; the correlation window (5m) is inside the query
