@@ -9,10 +9,13 @@ here=$(dirname "$0")
 want=$(grep -c . "${ZK_DETECTIONS_DIR:-$here/../../zk-detections}/rules/elastic/sigma-rules.ndjson")
 deadline=$((SECONDS + ${1:-420}))
 . "$here/es.sh"
+err=$(mktemp)
+trap 'rm -f "$err"' EXIT
 
 q='{"size":0,"query":{"bool":{"filter":[{"range":{"@timestamp":{"gte":"'"${SINCE:-now-30m}"'"}}},{"term":{"kibana.alert.rule.tags":"zk-lab"}}]}},"aggs":{"r":{"terms":{"field":"kibana.alert.rule.name","size":1000}}}}'
 while :; do
-  rules=$(es /.alerts-security.alerts-default/_search "$q" 2>/dev/null | jq -r '.aggregations.r.buckets[]? | "\(.key): \(.doc_count)"' || true)
+  # keep the last error: at the deadline, an access problem must not read as "the rules did not fire"
+  rules=$(es /.alerts-security.alerts-default/_search "$q" 2>"$err" | jq -r '.aggregations.r.buckets[]? | "\(.key): \(.doc_count)"' || true)
   got=$(grep -c . <<<"$rules" || true)
   if ((got >= want)); then
     echo "$rules"
@@ -21,6 +24,7 @@ while :; do
   fi
   if ((SECONDS > deadline)); then
     echo "${rules:-no alerts}"
+    [[ -s $err ]] && { echo "last Elasticsearch error:"; tail -3 "$err"; }
     echo "FAIL only $got/$want rules alerted"
     exit 1
   fi

@@ -7,5 +7,5 @@
 *.key
 kubeconfig*
 
-# CI writes backend overrides next to each root
-*_override.tf
+# CI writes backend overrides next to each root; any other override.tf must show in git status (S3-3)
+ci_override.tf

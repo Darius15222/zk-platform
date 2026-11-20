@@ -29,7 +29,8 @@ expect "replayed proof rejected" "$(c -o /dev/null -w '%{http_code}' -d "$proof"
 
 nonce=$(c -d "{\"username\":\"$user\"}" "$U/challenge" | jq -r .nonce)
 other=$(cd "$APP" && node src/client.ts keygen | jq -r .secret)
-expect "forged proof rejected" "$(c -o /dev/null -w '%{http_code}' -d "$(prove "$other" "$user" "$nonce")" "$U/login/zk")" 401
+forged=$(prove "$other" "$user" "$nonce")
+expect "forged proof rejected" "$(c -o /dev/null -w '%{http_code}' -d "$forged" "$U/login/zk")" 401
 
 c -o /dev/null -d '{"username":"victim","password":"Correct-horse-9"}' "$U/register/password" || true
 for i in $(seq 1 25); do
