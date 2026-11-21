@@ -47,7 +47,9 @@ up: ## start the cluster, converge the platform, then load the detection rules
 
 DET = terraform -chdir=envs/detections
 
-detections: ## R-05: Sigma rules from zk-detections -> Elastic Security (needs Kibana up and kibana.zk.local in /etc/hosts)
+detections: ## R-05: Sigma rules from zk-detections -> Elastic Security (needs kibana.zk.local in /etc/hosts)
+	@# on a fresh cluster Kibana needs minutes after apply; without this wait the rule API answers 503
+	kubectl --kubeconfig $(ZK_KUBECONFIG) -n siem wait --for=jsonpath='{.status.health}'=green kibana/siem-eck-kibana --timeout=600s
 	kubectl --kubeconfig $(ZK_KUBECONFIG) -n cert-manager get secret zk-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > envs/detections/zk-root-ca.crt
 	$(DET) init -input=false >/dev/null
 	$(DET) apply -input=false -auto-approve
